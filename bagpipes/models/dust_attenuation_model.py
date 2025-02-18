@@ -1,6 +1,9 @@
 from __future__ import print_function, division, absolute_import
 
 import numpy as np
+import os 
+
+from scipy.interpolate import CubicSpline, interp1d
 
 from .. import config
 
@@ -49,17 +52,31 @@ class dust_attenuation(object):
             self.A_cont_calz = self._calzetti(wavelengths)
             self.A_line_calz = self._calzetti(config.line_wavs)
 
+        # added by J. McKinney for custom table-based A_lambda
+        elif self.type=='SNe':
+            self.A_cont = self._sne_dust(wavelengths)
+            self.A_line = self._sne_dust(config.line_wavs)
+
         # Call update method (does nothing for Calzetti and Cardelli)
         self.update(param)
 
     def update(self, param):
 
         # Fixed-shape dust laws are pre-computed in __init__.
-        if self.type in ["Calzetti", "Cardelli", "SMC"]:
+        if self.type in ["Calzetti", "Cardelli", "SMC","SNe"]:
             return
 
         # Variable shape dust laws have to be computed every time.
         self.A_cont, self.A_line = getattr(self, self.type)(param)
+
+    #def SNe(self, param):
+    #    """ Load A(lambda)/A(V) for SNe dust attenuation law. """
+    #    sne_x, sne_y = np.loadtxt('/Library/Python/3.8/site-packages/bagpipes/models/Alambda_AV_Gao2020_SNe1A_2012cu.txt',unpack=True)
+    #    sne_x *= 1e4 # um -> AA
+    #    terp = interp1d(sne_x,sne_y,bounds_error=False,fill_value=0.0)
+    #    A_lambda = terp(wavs)
+    #    return A_lambda
+
 
     def CF00(self, param):
         """ Modified Charlot + Fall (2000) model of Carnall et al.
@@ -75,12 +92,12 @@ class dust_attenuation(object):
         Rv_m = 4.05/((4.05+1)*(4400./5500.)**delta - 4.05)
 
         drude = B*self.wavelengths**2*350.**2
-        drude /= (self.wavelengths**2 - 2175.**2)**2 + self.wavelengths**2*350.**2
+        drude /= (self.wavelengths**2 - 2175.**2)**2 + self.wavelengths**2*375.**2
         A_cont = self.A_cont_calz*Rv_m*(self.wavelengths/5500.)**delta + drude
         A_cont /= Rv_m
 
         drude = B*config.line_wavs**2*350.**2
-        drude /= (config.line_wavs**2 - 2175.**2)**2 + config.line_wavs**2*350.**2
+        drude /= (config.line_wavs**2 - 2175.**2)**2 + config.line_wavs**2*375.**2
         A_line = self.A_line_calz*Rv_m*(config.line_wavs/5500.)**delta + drude
         A_line /= Rv_m
 
@@ -162,6 +179,14 @@ class dust_attenuation(object):
 
         A_lambda /= 4.05
 
+        return A_lambda
+
+    def _sne_dust(self,wavs):
+        """ Load A(lambda)/A(V) for SNe dust attenuation law. """
+        sne_x, sne_y = np.loadtxt('/Library/Python/3.8/site-packages/bagpipes/models/Alambda_AV_Gao2020_SNe1A_2012cu.txt',unpack=True)
+        sne_x *= 1e4 # um -> AA
+        terp = interp1d(sne_x,sne_y,bounds_error=False,fill_value=0.0)
+        A_lambda = terp(wavs)
         return A_lambda
 
     def _smc_gordon(self, wavs):
